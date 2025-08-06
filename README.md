@@ -1,18 +1,29 @@
-once this stack is applied, the Azure OpenAI account you provisioned behaves like OpenAI’s public API in all key ways:
+# Azure OpenAI as a Service
 
 Endpoint shape
 Requests go to https://<your-resource-name>.openai.azure.com/openai/deployments/<model-deployment>/chat/completions?api-version=2024-02-15-preview
+
 Same JSON request/response format as api.openai.com. Only the hostname and required api-version query-param differ.
+
 Auth model
 Instead of bearer keys from OpenAI, you use Azure keys or Azure AD tokens.
+
 Our APIM front-door issues subscription keys so you can keep the experience “bearer-token-only” for callers if desired.
+
 Models & capability parity
+
 You deploy GPT-4o, GPT-3.5-turbo, embeddings, etc. exactly as you would choose models in OpenAI.
+
 Some latest previews appear on OpenAI first and arrive in Azure a few weeks later.
+
 Rate limits & quotas
+
 Controlled by your Azure subscription capacity requests rather than the public OpenAI org limits.
+
 APIM lets you overlay custom per-subscriber quotas or metering.
+
 Enterprise controls in this stack
+
 Private endpoints, CMK encryption, diagnostic logging, and policy guard-rails—things you don’t get from the public OpenAI SaaS.
 
 With the workspace-per-subscriber or loop-module pattern, each subscriber ends up with its own:
