@@ -9,3 +9,10 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+# Optional list of AAD object IDs that receive pre-provisioned subscriptions
+variable "initial_user_object_ids" {
+  description = "Optional list of AAD object IDs that receive pre-provisioned subscriptions"
+  type        = list(string)
+  default     = []
+}

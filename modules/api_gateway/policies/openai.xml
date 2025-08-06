@@ -1,0 +1,21 @@
+<policies>
+  <inbound>
+    <base/>
+    <validate-subscription key-name="Ocp-Apim-Subscription-Key"/>
+    <!-- Optional extra AuthN: AAD role-based -->
+    <!--<validate-jwt … />-->
+    <authentication-managed-identity resource="https://cognitiveservices.azure.com/"/>
+    <set-header name="Authorization" exists-action="override">
+      <value>@("Bearer " + context.Identity.GetManagedIdentityToken("https://cognitiveservices.azure.com/"))</value>
+    </set-header>
+  </inbound>
+  <backend>
+    <base/>
+  </backend>
+  <outbound>
+    <base/>
+  </outbound>
+  <on-error>
+    <base/>
+  </on-error>
+</policies>
