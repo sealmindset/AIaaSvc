@@ -35,7 +35,8 @@ resource "azurerm_storage_account" "diag" {
 
   infrastructure_encryption_enabled = true
   min_tls_version                   = "TLS1_2"
-  shared_access_key_enabled         = false
+  # Enable shared-key access so Terraform can read queue properties
+  shared_access_key_enabled         = true
 
   # Disallow public access to blobs and queues
   allow_nested_items_to_be_public = false
@@ -58,9 +59,9 @@ resource "azurerm_storage_account" "diag" {
 ########################################
 resource "azurerm_monitor_diagnostic_setting" "diag" {
   # Convert list -> map with index keys so keys are known at plan-time
-  for_each            = { for idx, id in var.resources_to_monitor : idx => id }
-  name                = "diag"
-  target_resource_id  = each.value
+  for_each           = { for idx, id in var.resources_to_monitor : idx => id }
+  name               = "diag"
+  target_resource_id = each.value
 
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
   storage_account_id         = azurerm_storage_account.diag.id

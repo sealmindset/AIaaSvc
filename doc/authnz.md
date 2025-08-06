@@ -43,4 +43,4 @@ Content-Type: application/json
 - User or admin can regenerate either key in the portal.
 - Admin can set subscription state to Suspended or Cancelled to block access.
 
-The whole process is self-service for developers (apart from the one-click approval, unless you pre-seed).
+The whole process is self-service for developers (apart from the one-click approval, unless you pre-seed). 

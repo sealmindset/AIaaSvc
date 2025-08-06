@@ -54,7 +54,6 @@ resource "azurerm_role_assignment" "apim_openai_user" {
   scope                = var.openai_account_id
   role_definition_name = "Cognitive Services OpenAI User"
   principal_id         = azurerm_api_management.apim.identity[0].principal_id
-  tags                 = var.tags
 }
 
 # Product for self-service subscription keys
@@ -66,7 +65,6 @@ resource "azurerm_api_management_product" "openai_product" {
   approval_required   = true
   subscriptions_limit = -1
   published           = true
-  tags                = var.tags
 }
 
 resource "azurerm_api_management_product_api" "openai_link" {
@@ -83,9 +81,8 @@ resource "azurerm_api_management_subscription" "seed" {
   resource_group_name = var.rg_name
   product_id          = azurerm_api_management_product.openai_product.product_id
   display_name        = "seed-sub-${each.value}"
-  owner_id            = format("/users/%s", each.value)
+  user_id             = format("/users/%s", each.value)
   state               = "active"
-  tags                = var.tags
 }
 
 output "internal_api_base_url" {

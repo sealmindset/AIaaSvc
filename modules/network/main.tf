@@ -32,10 +32,10 @@ resource "azurerm_virtual_network" "hub" {
 
 # Dedicated subnet for Azure Firewall
 resource "azurerm_subnet" "firewall_subnet" {
-  name                 = "AzureFirewallSubnet"           # must be this exact name
+  name                 = "AzureFirewallSubnet" # must be this exact name
   resource_group_name  = azurerm_resource_group.hub.name
   virtual_network_name = azurerm_virtual_network.hub.name
-  address_prefixes     = ["10.0.1.0/26"]                 # adjust if hub range differs
+  address_prefixes     = ["10.0.1.0/26"] # adjust if hub range differs
 }
 
 # Public IP (Mgmt only — egress still blocked by rules)
@@ -150,18 +150,18 @@ resource "azurerm_virtual_network_peering" "spoke_to_hub" {
 # 5. Key Vault (CMKs)  #
 ########################
 resource "azurerm_key_vault" "kv" {
-  name                       = "kv-ai-${substr(uuid(), 0, 6)}"
-  location                   = var.location
-  resource_group_name        = azurerm_resource_group.hub.name
-  tenant_id                  = data.azurerm_client_config.current.tenant_id
-  sku_name                   = "standard"
-  purge_protection_enabled   = true
+  name                     = "kv-ai-${substr(uuid(), 0, 6)}"
+  location                 = var.location
+  resource_group_name      = azurerm_resource_group.hub.name
+  tenant_id                = data.azurerm_client_config.current.tenant_id
+  sku_name                 = "standard"
+  purge_protection_enabled = true
 
   network_acls {
-    default_action                 = "Deny"
-    bypass                         = "None"
-    virtual_network_subnet_ids     = [azurerm_subnet.gateway.id, azurerm_subnet.pe.id]
-    ip_rules                       = []
+    default_action             = "Deny"
+    bypass                     = "None"
+    virtual_network_subnet_ids = [azurerm_subnet.gateway.id, azurerm_subnet.pe.id]
+    ip_rules                   = []
   }
 
   tags = var.tags

@@ -17,3 +17,12 @@ az provider register --namespace Microsoft.CognitiveServices  --wait
 ```
 az provider show --namespace Microsoft.CognitiveServices --query "registrationState"
 ```
+
+# Storage Account
+Terraform is failing at the plan-time read of the existing diagnostics storage account because shared_access_key_enabled is still false in Azure.
+The provider must query queue properties (a shared-key call) before it can update the account, so simply declaring shared_access_key_enabled = true is not enough—the read fails first.
+
+az storage account update \
+  --resource-group rg-network-hub \
+  --name stdiagf0def5f7 \
+  --allow-shared-key-access true
