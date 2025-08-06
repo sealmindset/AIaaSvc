@@ -37,6 +37,19 @@ resource "azurerm_storage_account" "diag" {
   min_tls_version                   = "TLS1_2"
   shared_access_key_enabled         = false
 
+  # Disallow public access to blobs and queues
+  allow_nested_items_to_be_public = false
+
+  # Enable logging for queue service
+  queue_properties {
+    logging {
+      delete  = true
+      read    = true
+      write   = true
+      version = "1.0"
+    }
+  }
+
   tags = var.tags
 }
 
