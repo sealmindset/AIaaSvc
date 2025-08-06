@@ -1,0 +1,7 @@
+mg_name           = "mg-ai"
+allowed_locations = ["eastus2", "centralus"]
+location          = "eastus2"
+tags = {
+  environment = "dev"
+  owner       = "your-name"
+}
