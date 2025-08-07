@@ -38,6 +38,7 @@ azurerm_storage_management_policy deleting blobs after 90 days.
 - Role-based access for diagnostics via inherited tags/resource-groups.
 
 7. Scalability & ceilings
+
 | Component	| Scale Units	| Ceiling / Notes |
 | --- | --- | --- |
 | APIM (Developer_1 SKU) | 1 single-unit dev instance | Good for 1–5 RPS bursts only; not production-grade. For prod you’d switch to Consumption (serverless) or Premium/Dedicated with scale-out to 20 units per region. |
