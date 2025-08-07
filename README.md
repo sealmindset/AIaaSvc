@@ -1,177 +1,80 @@
 # Azure OpenAI as a Service
 
-Endpoint shape
-Requests go to https://<your-resource-name>.openai.azure.com/openai/deployments/<model-deployment>/chat/completions?api-version=2024-02-15-preview
+## High-level resource inventory
+(✔ = always deployed, (opt) = only when create_sandbox =true)
 
-Same JSON request/response format as api.openai.com. Only the hostname and required api-version query-param differ.
+1. Resource groups
+- rg-ai-spoke, rg-network-hub, rg-observability, etc. (✔)
+- rg-apim-sandbox-* (opt)
 
-Auth model
-Instead of bearer keys from OpenAI, you use Azure keys or Azure AD tokens.
+2. Network layer
+- Spoke VNet + subnets, NSG, private-link service/endpoints (✔)
+- VNet peering to hub (✔)
+- Optional cleanup script to force-delete VNets/NSGs.
 
-Our APIM front-door issues subscription keys so you can keep the experience “bearer-token-only” for callers if desired.
+3. API layer
+- Azure API Management (apim-prod) with:
+  - System-assigned managed identity (MSI)
+  - Private endpoint to VNet
+  - Product openai-product, seed subscriptions (azurerm_api_management_subscription)
+  - Inbound policy (
+policies/openai.xml
+) performing MI-token acquisition.
+  - Sandbox APIM (apim-sandbox-*) + OAuth2 IdP + product/subscription (opt).
 
-Models & capability parity
+4. Compute / data
+- Azure Cognitive Services – OpenAI private endpoint (referenced, not created here)
+- No Azure Functions/AKS/VMs—API traffic is proxied by APIM.
 
-You deploy GPT-4o, GPT-3.5-turbo, embeddings, etc. exactly as you would choose models in OpenAI.
+5. Observability
+- Log Analytics workspace (365-day retention)
+-Storage account (Standard_GRS, TLS 1.2, shared-key enabled)
+- azurerm_monitor_diagnostic_setting streaming logs/metrics to both LAW and Storage
+azurerm_storage_management_policy deleting blobs after 90 days.
 
-Some latest previews appear on OpenAI first and arrive in Azure a few weeks later.
+6. IAM
+- APIM MSI role assignment on the OpenAI resource
+- Seed subscriptions linked to AAD users (initial_user_object_ids)
+- Role-based access for diagnostics via inherited tags/resource-groups.
 
-Rate limits & quotas
+7. Scalability & ceilings
+| Component	| Scale Units	| Ceiling / Notes |
+| --- | --- | --- |
+| APIM (Developer_1 SKU) | 1 single-unit dev instance | Good for 1–5 RPS bursts only; not production-grade. For prod you’d switch to Consumption (serverless) or Premium/Dedicated with scale-out to 20 units per region. |
+| Cognitive Services (OpenAI) | Throughput tokens / RPM | Governed by Azure OpenAI capacity and per-deployment limits. VNet + private endpoint has no impact on scale. |
+| Log Analytics | Ingest GB/day | Automatic behind-the-scenes scale; cost grows linearly. |
+| Storage | 5 PB soft limit | GRS handles redundancy; lifecycle rule prunes after 90 days. |
+| VNets / private endpoints | 65k IPs per VNet | Peering can hit 500 peerings/VNet; well below ceiling here. |
 
-Controlled by your Azure subscription capacity requests rather than the public OpenAI org limits.
+If higher load is expected, upgrade APIM SKU, enable autoscale rules, or move heavy workloads to AKS/Functions.
 
-APIM lets you overlay custom per-subscriber quotas or metering.
+8. Security safeguards
+- Network isolation – All critical services (APIM, OpenAI, Storage) use private endpoints in a locked-down spoke VNet with NSG rules; no open internet ingress.
+- Managed identity – APIM uses MSI to obtain AAD tokens for backend calls; no secrets stored in code.
+- Least-privilege IAM – Role assignment scoped to OpenAI resource only; seed subscriptions limited to APIM product.
+- Encryption –
+  - Storage account: infrastructure encryption + TLS 1.2, public-access disabled.
+  - All service-level encryption at rest (Azure default) + TLS in transit.
+- Logging & audit – Diagnostic settings stream control/operation logs and metrics to immutable storage and LAW; retention + lifecycle enforce secure archival.
+Soft delete / RG deletion safeguards – Provider feature flag still permits deletion even with nested resources, but cleanup script removes blockers first.
 
-Enterprise controls in this stack
+9. HIPAA-readiness assessment
+Azure services used (API Management, Storage, Log Analytics, VNet, Private Link, Cognitive Services) are all covered under the Microsoft BAA and appear on the Azure HIPAA-HITRUST compliance list. Meeting HIPAA obligations still requires:
 
-Private endpoints, CMK encryption, diagnostic logging, and policy guard-rails—things you don’t get from the public OpenAI SaaS.
+- BAA signed with Microsoft (customer responsibility).
+- PHI encryption – already met (AES-256 at rest, TLS1.2+ in flight).
+- Access controls & auditing – AAD RBAC + diagnostic logs satisfy.
+- Data retention & disposal – 90-day log lifecycle and Terraform destroy workflow comply.
+- Backup & DR – GRS storage, APIM dev SKU has no SLA; for HIPAA production you’d use Premium with multi-region redundancy.
+- Incident response – Not coded; policy/procedures required externally.
 
-With the workspace-per-subscriber or loop-module pattern, each subscriber ends up with its own:
+The stack can be HIPAA-compliant if you (a) switch APIM to a production SKU, (b) ensure BAA coverage, and (c) maintain org-level policies.
 
-Resource group(s)
-Spoke VNet and private endpoints
-Key Vault + customer-managed key
-Azure OpenAI account (and its quota)
-Private APIM front-door
-That yields clean isolation of data, network, RBAC, and lifecycle: you can destroy or update one subscriber without affecting others.
+10. Gaps & recommendations
+- Production SKU & autoscale – Developer tier unsuitable for load or SLA; plan migration path.
+- WAF / DDoS – Consider Azure Front Door or Application Gateway WAF in front of APIM if exposed publicly.
+- CI/CD – Use terraform plan in CI to catch drift; run terraform validate & tflint.
+- Policies – Add Azure Policy definitions for tag compliance, allowed SKUs, & HIPAA controls.
+- Sandbox toggle – Verify create_sandbox defaults false in prod pipeline to avoid unintended costs.
 
-If you prefer a multi-tenant model (shared OpenAI account, shared APIM, keys per user, etc.) you can still do it by:
-
-Deploying the stack once as a “shared” environment.
-Creating an APIM Product for each subscriber, issuing them unique subscription keys, and using APIM policies to enforce per-subscriber quotas and logging.
-So the IaC supports both:
-
-Dedicated instance per subscriber (strongest isolation, simplest mental model)
-Shared instance with APIM segmentation (lower cost, more operational rules to enforce)
-Pick the model that matches your governance and cost requirements.
-
-## Prompt History
-Azure OpenAI itself does not persist your prompt / completion bodies for later retrieval—once the request is processed the payload is discarded (other than anonymised telemetry used by Microsoft).
-
-## Security
-
-### No customer-data training
-Microsoft contractually commits that prompts, completions, and embeddings from Azure OpenAI are never used to retrain any foundation models, public or private.
-
-Data stays within the region of your resource, encrypted at rest, and is deleted after the request (aside from aggregated, anonymised telemetry).
-
-### Isolation from other tenants
-Your traffic runs on dedicated capacity slices; another tenant can’t “poison” or observe your context window.
-
-What you still need to do on your side:
-
-Prompt-injection defence
-- Validate / sanitise user input at your application layer.
-- Add system-instructions that override malicious user roles.
-- If exposing the API to untrusted users, set conservative max-tokens and temperature, and use content-filter endpoints.
-
-Fault-injection / chaos testing
-- Because traffic is private-network-only, attackers would have to compromise an internal caller first.
-- Use APIM policies to throttle abnormal request rates and reject oversized payloads.
-- Enable Azure Monitor alerts on error-rate or latency spikes (already captured by the diagnostic settings).
-
-### Prompt Injection Defence
-- Validate / sanitise user input at your application layer.
-- Add system-instructions that override malicious user roles.
-- If exposing the API to untrusted users, set conservative max-tokens and temperature, and use content-filter endpoints.
-
-#### Below is a practical pattern for “prompt-sanitisation” in Azure API Management.
-
-It lets you block or rewrite prompts that contain disallowed strings before they reach the Azure OpenAI endpoint.
-
-1. Policy logic (XML)
-Add an <inbound> policy to the API scope (or Product scope if you want per-subscriber rules).
-
-```xml
-<policies>
-  <inbound>
-    <!-- Parse JSON body -->
-    <set-variable name="body"
-                  value="@(|context.Request.Body.As<JObject>(preserveContent:true)|)" />
-
-    <!-- Basic example: block if prompt includes forbidden words -->
-    <choose>
-      <when condition="@( ((string)context.Variables["body"]["messages"][0]["content"])
-                           .ToLowerInvariant()
-                           .Contains("password") )">
-        <return-response>
-          <set-status code="400" reason="Bad Request" />
-          <set-body>
-            {"error":"Prompt contains disallowed content."}
-          </set-body>
-        </return-response>
-      </when>
-    </choose>
-
-    <!-- Optionally: strip PII via regex -->
-    <set-variable name="sanitisedPrompt"
-                  value='@(System.Text.RegularExpressions.Regex
-                           .Replace((string)context.Variables["body"]["messages"][0]["content"],
-                                    @"[0-9]{3}-[0-9]{2}-[0-9]{4}", "***SSN***"))' />
-
-    <!-- Write the cleaned prompt back into the request -->
-    <set-body>@{
-      context.Variables["body"]["messages"][0]["content"] =
-           context.Variables["sanitisedPrompt"];
-      return context.Variables["body"].ToString();
-    }</set-body>
-
-    <base />
-  </inbound>
-
-  <backend>
-    <base />
-  </backend>
-  <outbound>
-    <base />
-  </outbound>
-  <on-error>
-    <base />
-  </on-error>
-</policies>
-```
-
-#### What it does
-
-- Reads the JSON request body into body.
-- Checks the first message content; if it contains “password” (example), immediately rejects.
-- Otherwise uses a regex to scrub US-SSN patterns and rewrites the body.
-- Proceeds to the backend (<base />) with the sanitized prompt.
-
-You can expand the logic—call an external DLP service, run a basic LLM filter, etc.
-
-2. Automating via Terraform
-In 
-modules/api_gateway
-, add a policy resource:
-
-```hcl
-resource "azurerm_api_management_api_policy" "prompt_sanitize" {
-  api_name            = azurerm_api_management_api.openai_api.name
-  api_management_name = azurerm_api_management.apim.name
-  resource_group_name = var.rg_name
-  xml_content         = file("${path.module}/policies/prompt-sanitize.xml")
-}
-```
-
-Commit the XML snippet to modules/api_gateway/policies/prompt-sanitize.xml (the file shown above).
-Optionally parameterise forbidden words or regex patterns via policy <set-variable> with {{subscription-key}}-style templates, or generate the XML with Terraform templatefile() and variables.
-
-3. Testing & rollback
-```bash
-# Call via APIM with a bad prompt
-curl -X POST https://gateway.azure-api.net/openai/...
-     -H "Ocp-Apim-Subscription-Key: <key>"
-     -H "Content-Type: application/json"
-     -d '{"messages":[{"role":"user","content":"my password is 123"}]}'
-```
-
-#### → HTTP 400 {"error":"Prompt contains disallowed content."}
-Because the policy is applied at API scope, you can disable it quickly in the portal or by setting xml_content = "" and re-applying Terraform.
-
-4. Advanced ideas
-- External moderation API – Call Azure Content Safety or your own service inside the policy (<send-request>), and block/modify based on its score.
-- Rate-based blocking – Combine with APIM <quota> and <rate-limit> to throttle repeated offences.
-- Logging – Add <log-to-eventhub> or <trace> statements for caught violations to feed your SIEM.
-
-That’s all you need to wire automated sanitisation into APIM and keep Azure OpenAI protected from malicious or policy-violating prompts.
+Overall the design follows best practices for private, secure access to Azure OpenAI via APIM and scales to moderate workloads; lifting ceilings primarily hinges on upgrading the APIM tier and ensuring OpenAI capacity quotas.

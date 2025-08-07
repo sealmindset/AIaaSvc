@@ -29,9 +29,24 @@ az storage account update \
 
 
 # Network
-delete just those two Azure resources by ID (skips provider bugs)
-  ```
-az network nsg delete --ids $(az network nsg show --resource-group rg-ai-spoke --name nsg-ai-spoke --query id -o tsv)
+To remove the spoke VNet and NSG that block RG deletion.
 
+```
+# delete just those two Azure resources by ID (skips provider bugs)
+az network nsg delete --ids $(az network nsg show --resource-group rg-ai-spoke --name nsg-ai-spoke --query id -o tsv)
 az network vnet delete --ids $(az network vnet show --resource-group rg-ai-spoke --name vnet-ai-spoke --query id -o tsv)
 ```
+
+When those finish, confirm the spoke RG (rg-ai-spoke) is empty:
+
+```
+az resource list -g rg-ai-spoke
+```
+
+If nothing is returned, rerun:
+
+```
+terraform destroy -auto-approve
+```
+
+Terraform will now delete the empty RGs and finish wiping the environment.
