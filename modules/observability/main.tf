@@ -55,6 +55,29 @@ resource "azurerm_storage_account" "diag" {
 }
 
 ########################################
+# 2b. Storage Management Policy (log retention) #
+########################################
+resource "azurerm_storage_management_policy" "diag_retention" {
+  storage_account_id = azurerm_storage_account.diag.id
+
+  rule {
+    name    = "log-retention-90-days"
+    enabled = true
+
+    filters {
+      blob_types   = ["blockBlob"]
+      prefix_match = ["insights-logs-", "insights-metrics-pt1m"]
+    }
+
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 90
+      }
+    }
+  }
+}
+
+########################################
 # 3. Diagnostic Settings per resource  #
 ########################################
 resource "azurerm_monitor_diagnostic_setting" "diag" {
@@ -66,19 +89,13 @@ resource "azurerm_monitor_diagnostic_setting" "diag" {
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
   storage_account_id         = azurerm_storage_account.diag.id
 
-  log {
+  enabled_log {
     category = "AllLogs"
-    enabled  = true
-    retention_policy {
-      enabled = false
-    }
   }
 
   metric {
     category = "AllMetrics"
     enabled  = true
-    retention_policy {
-      enabled = false
-    }
+
   }
 }

@@ -26,3 +26,12 @@ az storage account update \
   --resource-group rg-network-hub \
   --name stdiagf0def5f7 \
   --allow-shared-key-access true
+
+
+# Network
+delete just those two Azure resources by ID (skips provider bugs)
+  ```
+az network nsg delete --ids $(az network nsg show --resource-group rg-ai-spoke --name nsg-ai-spoke --query id -o tsv)
+
+az network vnet delete --ids $(az network vnet show --resource-group rg-ai-spoke --name vnet-ai-spoke --query id -o tsv)
+```
