@@ -57,7 +57,7 @@ If higher load is expected, upgrade APIM SKU, enable autoscale rules, or move he
   - Storage account: infrastructure encryption + TLS 1.2, public-access disabled.
   - All service-level encryption at rest (Azure default) + TLS in transit.
 - Logging & audit – Diagnostic settings stream control/operation logs and metrics to immutable storage and LAW; retention + lifecycle enforce secure archival.
-Soft delete / RG deletion safeguards – Provider feature flag still permits deletion even with nested resources, but cleanup script removes blockers first.
+- Soft delete / RG deletion safeguards – Provider feature flag still permits deletion even with nested resources, but cleanup script removes blockers first.
 
 9. HIPAA-readiness assessment
 Azure services used (API Management, Storage, Log Analytics, VNet, Private Link, Cognitive Services) are all covered under the Microsoft BAA and appear on the Azure HIPAA-HITRUST compliance list. Meeting HIPAA obligations still requires:

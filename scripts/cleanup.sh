@@ -47,6 +47,24 @@ if [[ "$NEED_MANUAL" -eq 0 ]]; then
   echo "[cleanup] Terraform cleaned everything. Proceeding to verification section…"
 fi
 
+# -----------------------------------------------------------
+# Network Watcher cleanup (optional)
+# Disable per-region then remove NetworkWatcherRG. Safe if absent.
+# Regions can be overridden via NW_REGIONS env var.
+# -----------------------------------------------------------
+
+NW_REGIONS=${NW_REGIONS:-"eastus centralus"}
+if command -v az >/dev/null 2>&1; then
+  echo "[cleanup] Disabling Network Watcher in regions: $NW_REGIONS"
+  for r in $NW_REGIONS; do
+    az network watcher configure --locations "$r" --enabled false || true
+  done
+  echo "[cleanup] Deleting NetworkWatcherRG (if present)"
+  az group delete --name NetworkWatcherRG --yes --no-wait || true
+else
+  echo "[cleanup] Azure CLI not found; skipping Network Watcher cleanup."
+fi
+
 SPOKE_RG="${1:-rg-ai-spoke}"
 VNET_NAME="${2:-vnet-ai-spoke}"
 NSG_NAME="${3:-nsg-ai-spoke}"

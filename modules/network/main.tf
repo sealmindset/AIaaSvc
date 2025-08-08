@@ -88,6 +88,10 @@ resource "azurerm_subnet" "pe" {
   resource_group_name  = azurerm_resource_group.spoke.name
   virtual_network_name = azurerm_virtual_network.spoke.name
   address_prefixes     = ["10.1.0.0/25"]
+  service_endpoints   = [
+    "Microsoft.Storage",
+    "Microsoft.KeyVault"
+  ]
 }
 
 # Subnet for APIM / gateway tier
@@ -96,6 +100,10 @@ resource "azurerm_subnet" "gateway" {
   resource_group_name  = azurerm_resource_group.spoke.name
   virtual_network_name = azurerm_virtual_network.spoke.name
   address_prefixes     = ["10.1.0.128/25"]
+  service_endpoints   = [
+    "Microsoft.Storage",
+    "Microsoft.KeyVault"
+  ]
 }
 
 ###################################
