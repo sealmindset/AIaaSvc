@@ -31,39 +31,27 @@ resource "azurerm_virtual_network" "hub" {
 }
 
 # Dedicated subnet for Azure Firewall
-resource "azurerm_subnet" "firewall_subnet" {
-  name                 = "AzureFirewallSubnet" # must be this exact name
-  resource_group_name  = azurerm_resource_group.hub.name
-  virtual_network_name = azurerm_virtual_network.hub.name
-  address_prefixes     = ["10.0.1.0/26"] # adjust if hub range differs
-}
+// Azure Firewall removed per design – using external firewall service
+// resource "azurerm_subnet" "firewall_subnet" {
+//   name                 = "AzureFirewallSubnet"
+//   resource_group_name  = azurerm_resource_group.hub.name
+//   virtual_network_name = azurerm_virtual_network.hub.name
+//   address_prefixes     = ["10.0.1.0/26"]
+// }
 
 # Public IP (Mgmt only — egress still blocked by rules)
-resource "azurerm_public_ip" "firewall_pip" {
-  name                = "pip-fw-hub"
-  location            = var.location
-  resource_group_name = azurerm_resource_group.hub.name
-  allocation_method   = "Static"
-  sku                 = "Standard"
-  tags                = var.tags
-}
+// Azure Firewall public IP removed
+// resource "azurerm_public_ip" "firewall_pip" {
+//   name                = "pip-fw-hub"
+//   location            = var.location
+//   resource_group_name = azurerm_resource_group.hub.name
+//   allocation_method   = "Static"
+//   sku                 = "Standard"
+//   tags                = var.tags
+// }
 
-resource "azurerm_firewall" "fw" {
-  name                = "fw-hub"
-  location            = var.location
-  resource_group_name = azurerm_resource_group.hub.name
-  sku_name            = "AZFW_VNet"
-  sku_tier            = "Standard"
-  threat_intel_mode   = "Deny"
-
-  ip_configuration {
-    name                 = "configuration"
-    subnet_id            = azurerm_subnet.firewall_subnet.id
-    public_ip_address_id = azurerm_public_ip.firewall_pip.id
-  }
-
-  tags = var.tags
-}
+// Azure Firewall resource removed
+// resource "azurerm_firewall" "fw" { ... }
 
 ##################################
 # 2. Spoke (AI-as-a-Service VNet) #
@@ -110,30 +98,12 @@ resource "azurerm_subnet" "gateway" {
 # 3. Routing — force all egress   #
 #    through the Azure Firewall   #
 ###################################
-resource "azurerm_route_table" "spoke_to_fw" {
-  name                = "rt-spoke-egress"
-  location            = var.location
-  resource_group_name = azurerm_resource_group.spoke.name
+// Route table to Azure Firewall removed – egress will follow system/default routes or external firewall solution
+// resource "azurerm_route_table" "spoke_to_fw" { ... }
 
-  route {
-    name                   = "DefaultRoute"
-    address_prefix         = "0.0.0.0/0"
-    next_hop_type          = "VirtualAppliance"
-    next_hop_in_ip_address = azurerm_firewall.fw.ip_configuration[0].private_ip_address
-  }
-
-  tags = var.tags
-}
-
-resource "azurerm_subnet_route_table_association" "pe_rta" {
-  subnet_id      = azurerm_subnet.pe.id
-  route_table_id = azurerm_route_table.spoke_to_fw.id
-}
-
-resource "azurerm_subnet_route_table_association" "gateway_rta" {
-  subnet_id      = azurerm_subnet.gateway.id
-  route_table_id = azurerm_route_table.spoke_to_fw.id
-}
+// Route table associations removed
+// resource "azurerm_subnet_route_table_association" "pe_rta" { ... }
+// resource "azurerm_subnet_route_table_association" "gateway_rta" { ... }
 
 ##########################
 # 4. Hub–Spoke Peering   #
