@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# cleanup_spoke_network.sh
+# cleanup.sh
 # -----------------------------------------------------------
 # Force-removes the spoke VNet, its peerings, and the NSG that
 # prevent Terraform from deleting the resource group.
+# Also removes any lingering Azure Firewall (fw-hub) and its Public IP (pip-fw-hub)
+# that may have been created previously and left unmanaged.
 #
 # Usage:
-#   ./scripts/cleanup_spoke_network.sh [spoke_rg] [vnet_name] [nsg_name]
+#   ./scripts/cleanup.sh [spoke_rg] [vnet_name] [nsg_name]
 # Defaults:
 #   spoke_rg   = rg-ai-spoke
 #   vnet_name  = vnet-ai-spoke
-#   nsg_name   = nsg-ai-spoke
+#   nsg_name   = nsg-ai-gateway
+#   hub_rg     = rg-network-hub (can override with HUB_RGS env var for multiple RGs)
+#   fw_name    = fw-hub
+#   fw_pip     = pip-fw-hub
 # -----------------------------------------------------------
 
 set -euo pipefail
@@ -27,7 +32,8 @@ if command -v terraform >/dev/null 2>&1; then
     echo "[cleanup] Terraform destroy failed—trying targeted network destroy…"
     terraform destroy \
       -target=module.network.azurerm_virtual_network.spoke \
-      -target=module.network.azurerm_network_security_group.spoke \
+      -target=module.network.azurerm_network_security_group.gateway \
+      -target=module.network.azurerm_subnet_network_security_group_association.gateway \
       -auto-approve || true
 
     # One more attempt at full destroy
@@ -67,7 +73,49 @@ fi
 
 SPOKE_RG="${1:-rg-ai-spoke}"
 VNET_NAME="${2:-vnet-ai-spoke}"
-NSG_NAME="${3:-nsg-ai-spoke}"
+NSG_NAME="${3:-nsg-ai-gateway}"
+
+# -----------------------------------------------------------
+# Azure Firewall leftovers (optional)
+# Delete hub firewall and its public IP if they exist. Useful if
+# older deployments created them and they remained unmanaged.
+# You can specify multiple hub RGs via HUB_RGS env var (space-delimited).
+# -----------------------------------------------------------
+HUB_RG_DEFAULT="rg-network-hub"
+HUB_RGS=${HUB_RGS:-"$HUB_RG_DEFAULT"}
+FW_NAME=${FW_NAME:-"fw-hub"}
+FW_PIP_NAME=${FW_PIP_NAME:-"pip-fw-hub"}
+
+if command -v az >/dev/null 2>&1; then
+  for rg in $HUB_RGS; do
+    echo "[cleanup] Attempting to delete Azure Firewall '$FW_NAME' in RG '$rg' (if present)…"
+    # Try direct delete (requires azure-firewall extension). If missing, install silently.
+    if ! az network firewall delete -g "$rg" -n "$FW_NAME" >/dev/null 2>&1; then
+      echo "[cleanup] azure-firewall extension not available or delete failed—attempting to add extension and retry…"
+      az extension add --name azure-firewall >/dev/null 2>&1 || {
+        # As a fallback, enable dynamic install to avoid prompts in future runs
+        az config set extension.use_dynamic_install=yes_without_prompt >/dev/null 2>&1 || true
+        az config set extension.dynamic_install_allow_preview=true >/dev/null 2>&1 || true
+      }
+      # Retry delete with the extension
+      if ! az network firewall delete -g "$rg" -n "$FW_NAME" >/dev/null 2>&1; then
+        echo "[cleanup] Extension-based delete failed—falling back to generic resource delete…"
+        FW_ID=$(az resource show \
+          -g "$rg" \
+          --resource-type Microsoft.Network/azureFirewalls \
+          -n "$FW_NAME" --query id -o tsv 2>/dev/null || true)
+        if [[ -n "$FW_ID" ]]; then
+          az resource delete --ids "$FW_ID" || true
+        fi
+      fi
+    fi
+
+    echo "[cleanup] Attempting to delete Public IP '$FW_PIP_NAME' in RG '$rg' (if present)…"
+    az network public-ip delete -g "$rg" -n "$FW_PIP_NAME" || true
+  done
+else
+  echo "[cleanup] Azure CLI not found; skipping Azure Firewall cleanup."
+fi
 
 echo "[cleanup] Spoke RG: $SPOKE_RG | VNet: $VNET_NAME | NSG: $NSG_NAME"
 
@@ -97,7 +145,7 @@ for zone in "${PRIVATE_ZONES[@]}"; do
   done
 done
 
-echo "[cleanup] Spoke network resources removed.\n"
+echo "[cleanup] Spoke network resources removed."
 
 # -----------------------------------------------------------
 # 5. Verification section

@@ -20,6 +20,19 @@ variable "tags" {
   default     = {}
 }
 
+# Optional CMK controls for Cognitive Services (lab-safe defaults)
+variable "enable_cmk" {
+  description = "Enable CMK encryption for Cognitive Services (requires key_vault_key_id)"
+  type        = bool
+  default     = false
+}
+
+variable "key_vault_key_id" {
+  description = "Key Vault Key ID for CMK (format: /subscriptions/.../resourceGroups/.../providers/Microsoft.KeyVault/vaults/<name>/keys/<key>/<version>)"
+  type        = string
+  default     = ""
+}
+
 # Sandbox APIM toggle and OAuth variables
 variable "create_sandbox" {
   description = "Whether to deploy sandbox APIM resources"

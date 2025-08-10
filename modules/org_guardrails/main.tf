@@ -6,6 +6,132 @@ terraform {
     }
   }
 }
+###############################################################
+# 5. Guardrails for Key Vault and Storage                      #
+#    - Deny public network access                              #
+###############################################################
+
+# Deny public network access for Key Vault
+resource "azurerm_policy_definition" "kv_deny_public_access" {
+  name         = "kv-deny-public-network-access"
+  display_name = "Key Vault should disable public network access"
+  mode         = "Indexed"
+  policy_type  = "Custom"
+  management_group_id = azurerm_management_group.org.id
+
+  policy_rule = jsonencode({
+    if = {
+      allOf = [
+        { field = "type", equals = "Microsoft.KeyVault/vaults" },
+        { field = "Microsoft.KeyVault/vaults/networkAcls.defaultAction", equals = "Allow" }
+      ]
+    }
+    then = { effect = "deny" }
+  })
+
+  metadata = jsonencode({ category = "Key Vault" })
+}
+
+resource "azurerm_management_group_policy_assignment" "kv_deny_public_access" {
+  name                 = "kv-deny-public-network-access"
+  management_group_id  = azurerm_management_group.org.id
+  policy_definition_id = azurerm_policy_definition.kv_deny_public_access.id
+}
+
+# Deny public network access for Storage Accounts
+resource "azurerm_policy_definition" "storage_deny_public_access" {
+  name         = "storage-deny-public-network-access"
+  display_name = "Storage accounts should disable public network access"
+  mode         = "Indexed"
+  policy_type  = "Custom"
+  management_group_id = azurerm_management_group.org.id
+
+  policy_rule = jsonencode({
+    if = {
+      allOf = [
+        { field = "type", equals = "Microsoft.Storage/storageAccounts" },
+        { field = "Microsoft.Storage/storageAccounts/networkAcls.defaultAction", equals = "Allow" }
+      ]
+    }
+    then = { effect = "deny" }
+  })
+
+  metadata = jsonencode({ category = "Storage" })
+}
+
+resource "azurerm_management_group_policy_assignment" "storage_deny_public_access" {
+  name                 = "storage-deny-public-network-access"
+  management_group_id  = azurerm_management_group.org.id
+  policy_definition_id = azurerm_policy_definition.storage_deny_public_access.id
+}
+
+###############################################################
+# 4. Guardrails for Cognitive Services (Azure OpenAI)          #
+#    - Deny public network access                              #
+#    - Enforce CMK via Key Vault                               #
+###############################################################
+
+# Custom policy: Deny Cognitive Services accounts with public network access enabled
+resource "azurerm_policy_definition" "cogsvc_deny_public_access" {
+  name         = "cogsvc-deny-public-network-access"
+  display_name = "Cognitive Services accounts should disable public network access"
+  mode         = "Indexed"
+  policy_type  = "Custom"
+  management_group_id = azurerm_management_group.org.id
+
+  policy_rule = jsonencode({
+    if = {
+      allOf = [
+        { field = "type", equals = "Microsoft.CognitiveServices/accounts" },
+        { field = "Microsoft.CognitiveServices/accounts/publicNetworkAccess", equals = "Enabled" }
+      ]
+    }
+    then = { effect = "deny" }
+  })
+
+  metadata = jsonencode({ category = "Cognitive Services" })
+}
+
+resource "azurerm_management_group_policy_assignment" "cogsvc_deny_public_access" {
+  name                 = "cogsvc-deny-public-network-access"
+  management_group_id  = azurerm_management_group.org.id
+  policy_definition_id = azurerm_policy_definition.cogsvc_deny_public_access.id
+
+  metadata = <<METADATA
+    { "category": "Cognitive Services", "assignedBy": "Terraform – org_guardrails module" }
+METADATA
+}
+
+# Custom policy: Enforce CMK (Key Vault) for Cognitive Services encryption
+resource "azurerm_policy_definition" "cogsvc_require_cmk" {
+  name         = "cogsvc-require-cmk"
+  display_name = "Cognitive Services accounts should use customer-managed keys"
+  mode         = "Indexed"
+  policy_type  = "Custom"
+  management_group_id = azurerm_management_group.org.id
+
+  policy_rule = jsonencode({
+    if = {
+      allOf = [
+        { field = "type", equals = "Microsoft.CognitiveServices/accounts" },
+        { not = { field = "Microsoft.CognitiveServices/accounts/encryption.keySource", equals = "Microsoft.KeyVault" } }
+      ]
+    }
+    then = { effect = "deny" }
+  })
+
+  metadata = jsonencode({ category = "Cognitive Services" })
+}
+
+resource "azurerm_management_group_policy_assignment" "cogsvc_require_cmk" {
+  name                 = "cogsvc-require-cmk"
+  management_group_id  = azurerm_management_group.org.id
+  policy_definition_id = azurerm_policy_definition.cogsvc_require_cmk.id
+
+  metadata = <<METADATA
+    { "category": "Cognitive Services", "assignedBy": "Terraform – org_guardrails module" }
+METADATA
+}
 
 provider "azurerm" {
   features {}

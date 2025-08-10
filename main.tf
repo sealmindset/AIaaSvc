@@ -37,7 +37,8 @@ module "ai_service" {
   resource_group_name = module.network.spoke_rg_name
   vnet_id             = module.network.spoke_vnet_id
   subnets             = module.network.spoke_subnets
-  key_vault_key_id    = module.network.kv_key_id
+  enable_cmk          = var.enable_cmk
+  key_vault_key_id    = var.key_vault_key_id
   tags                = var.tags
 }
 
@@ -63,5 +64,10 @@ module "observability" {
     module.network.spoke_vnet_id
   ]
   tags = var.tags
+}
+
+# Placeholder for Defender for Cloud (no enablement/subscription in lab)
+module "defender" {
+  source = "./modules/defender"
 }
 

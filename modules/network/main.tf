@@ -94,6 +94,34 @@ resource "azurerm_subnet" "gateway" {
   ]
 }
 
+# Network Security Group for gateway subnet (minimal defaults)
+resource "azurerm_network_security_group" "gateway" {
+  name                = "nsg-ai-gateway"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.spoke.name
+  tags                = var.tags
+}
+
+resource "azurerm_subnet_network_security_group_association" "gateway" {
+  subnet_id                 = azurerm_subnet.gateway.id
+  network_security_group_id = azurerm_network_security_group.gateway.id
+}
+
+# Allow APIM control-plane inbound (management) on TCP 3443 from Azure ApiManagement service tag
+resource "azurerm_network_security_rule" "apim_mgmt_inbound" {
+  name                        = "apim-mgmt-allow-3443"
+  priority                    = 100
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "3443"
+  source_address_prefix       = "ApiManagement"
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.spoke.name
+  network_security_group_name = azurerm_network_security_group.gateway.name
+}
+
 ###################################
 # 3. Routing — force all egress   #
 #    through the Azure Firewall   #

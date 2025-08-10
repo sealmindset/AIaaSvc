@@ -8,9 +8,11 @@ resource "azurerm_cognitive_account" "openai" {
   kind                = "OpenAI"
   sku_name            = "S0"
   tags                = var.tags
-  # …
-  customer_managed_key {
-    key_vault_key_id = var.key_vault_key_id
+  # Optional CMK encryption via Key Vault
+  dynamic "customer_managed_key" {
+    for_each = var.enable_cmk ? [1] : []
+    content {
+      key_vault_key_id = var.key_vault_key_id
+    }
   }
-  # …
 }

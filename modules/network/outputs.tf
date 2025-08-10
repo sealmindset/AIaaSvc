@@ -35,7 +35,4 @@ output "kv_id" {
   value       = azurerm_key_vault.kv.id
 }
 
-output "firewall_private_ip" {
-  description = "Private IP of the Azure Firewall (used as next hop)"
-  value       = azurerm_firewall.fw.ip_configuration[0].private_ip_address
-}
+

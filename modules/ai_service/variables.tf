@@ -21,6 +21,13 @@ variable "subnets" {
 variable "key_vault_key_id" {
   description = "Key Vault Key ID used for CMK encryption (e.g. /keys/.../...)"
   type        = string
+  default     = ""
+}
+
+variable "enable_cmk" {
+  description = "Enable CMK encryption for Cognitive Services (requires key_vault_key_id)"
+  type        = bool
+  default     = false
 }
 
 variable "tags" {
