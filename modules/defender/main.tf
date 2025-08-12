@@ -19,4 +19,4 @@ provider "azurerm" {
 # Example (commented) resources for future use:
 # resource "azurerm_security_center_subscription_pricing" "defender_storage" {
 #   tier = "Standard" # DO NOT ENABLE IN THIS LAB
-# }
+#
