@@ -1,21 +1,118 @@
 <policies>
   <inbound>
-    <base/>
-    <validate-subscription key-name="Ocp-Apim-Subscription-Key"/>
-    <!-- Optional extra AuthN: AAD role-based -->
-    <!--<validate-jwt … />-->
-    <authentication-managed-identity resource="https://cognitiveservices.azure.com/"/>
+    <base />
+
+    <!-- Hybrid auth: prefer Entra ID JWT, else fallback to UI-issued opaque token, else require APIM subscription key -->
+    <set-variable name="auth.ok" value="false" />
+    <set-variable name="auth.userId" value="" />
+
+    <!-- Extract Authorization header and detect JWT vs opaque -->
+    <set-variable name="auth.hasAuthz" value="@(context.Request.Headers.ContainsKey("Authorization"))" />
+    <set-variable name="auth.token" value="@{
+      var h = context.Request.Headers.GetValueOrDefault("Authorization","");
+      return h?.StartsWith("Bearer ", System.StringComparison.OrdinalIgnoreCase) == true ? h.Substring(7) : "";
+    }" />
+    <set-variable name="auth.isJwtLike" value="@{
+      var t = (string)context.Variables["auth.token"]; // heuristic: JWT has 2 dots
+      return !string.IsNullOrEmpty(t) && t.Count(c => c=='.') == 2;
+    }" />
+
+    <!-- Branch: Entra ID JWT validation -->
+    <choose>
+      <when condition="@( (bool)context.Variables[\"auth.isJwtLike\"] )">
+        <validate-jwt header-name="Authorization" failed-validation-httpcode="401" require-scheme="Bearer">
+          <openid-config url="https://login.microsoftonline.com/${aad_tenant_id}/v2.0/.well-known/openid-configuration" />
+          <audiences>
+            <audience>${aad_audience}</audience>
+          </audiences>
+          <issuers>
+            <issuer>https://login.microsoftonline.com/${aad_tenant_id}/v2.0</issuer>
+          </issuers>
+        </validate-jwt>
+        <!-- If we reached here, JWT is valid -->
+        <set-variable name="auth.ok" value="true" />
+        <set-variable name="auth.userId" value="@{
+          var claim = context.Principal?.Claims?.FirstOrDefault(c => c.Type == "oid")?.Value
+                      ?? context.Principal?.Claims?.FirstOrDefault(c => c.Type == "sub")?.Value
+                      ?? "unknown";
+          return claim;
+        }" />
+      </when>
+      <otherwise>
+        <!-- Branch: Opaque token validation via UI service -->
+        <choose>
+          <when condition="@( (bool)context.Variables[\"auth.hasAuthz\"] && !string.IsNullOrEmpty((string)context.Variables[\"auth.token\"]) )">
+            <cache-lookup-value key="@(&quot;tok:&quot; + (string)context.Variables[&quot;auth.token&quot;])" default-value="__MISS__" always-check="true" ttl="60" variable-name="tokCache" />
+            <choose>
+              <when condition="@((string)context.Variables[&quot;tokCache&quot;] == &quot;__MISS__&quot;)">
+                <send-request mode="new" response-variable-name="tokResp" timeout="5" ignore-error="false">
+                  <set-url>${ui_token_validate_url}</set-url>
+                  <set-method>POST</set-method>
+                  <set-header name="Content-Type" exists-action="override">
+                    <value>application/json</value>
+                  </set-header>
+                  <set-body>@{
+                    var token = (string)context.Variables["auth.token"]; 
+                    return new JObject { { "token", token } }.ToString();
+                  }</set-body>
+                </send-request>
+                <choose>
+                  <when condition="@((IResponse)context.Variables[\"tokResp\"]).StatusCode != 200">
+                    <!-- Will fall through to subscription validation below -->
+                  </when>
+                  <otherwise>
+                    <set-variable name="tokJson" value="@{ var body = ((IResponse)context.Variables[\"tokResp\"]).Body?.As&lt;JObject&gt;(); return body ?? new JObject(); }" />
+                    <choose>
+                      <when condition="@(!(bool?)((JObject)context.Variables[\"tokJson\"]) [\"active\"] ?? false)">
+                        <!-- inactive token: leave auth.ok = false -->
+                      </when>
+                      <otherwise>
+                        <set-variable name="auth.ok" value="true" />
+                        <set-variable name="auth.userId" value="@{ return ((JObject)context.Variables[\"tokJson\"]) [\"userId\"]?.ToString() ?? "unknown"; }" />
+                        <cache-store-value key="@(&quot;tok:&quot; + (string)context.Variables[&quot;auth.token&quot;])" value="@(((JObject)context.Variables[&quot;tokJson&quot;]).ToString())" duration="60" />
+                      </otherwise>
+                    </choose>
+                  </otherwise>
+                </choose>
+              </when>
+              <otherwise>
+                <set-variable name="tokJson" value="@{ return JObject.Parse((string)context.Variables[\"tokCache\"]); }" />
+                <set-variable name="auth.ok" value="@{ return (bool?)((JObject)context.Variables[\"tokJson\"]) [\"active\"] ?? false; }" />
+                <set-variable name="auth.userId" value="@{ return ((JObject)context.Variables[\"tokJson\"]) [\"userId\"]?.ToString() ?? "unknown"; }" />
+              </otherwise>
+            </choose>
+          </when>
+        </choose>
+      </otherwise>
+    </choose>
+
+    <!-- If neither JWT nor opaque token validated, enforce APIM subscription key as a fallback gate -->
+    <choose>
+      <when condition="@(!(bool)context.Variables[\"auth.ok\"])" >
+        <validate-subscription key-name="Ocp-Apim-Subscription-Key" />
+      </when>
+    </choose>
+
+    <!-- Optional: rate limit per userId when available -->
+    <choose>
+      <when condition="@(!string.IsNullOrEmpty((string)context.Variables[\"auth.userId\"]))">
+        <rate-limit-by-key calls="60" renewal-period="60" counter-key="@((string)context.Variables[\"auth.userId\"])" />
+      </when>
+    </choose>
+
+    <!-- Backend auth: Managed Identity for Azure OpenAI -->
+    <authentication-managed-identity resource="https://cognitiveservices.azure.com/" />
     <set-header name="Authorization" exists-action="override">
       <value>@("Bearer " + context.Identity.GetManagedIdentityToken("https://cognitiveservices.azure.com/"))</value>
     </set-header>
   </inbound>
   <backend>
-    <base/>
+    <base />
   </backend>
   <outbound>
-    <base/>
+    <base />
   </outbound>
   <on-error>
-    <base/>
+    <base />
   </on-error>
 </policies>

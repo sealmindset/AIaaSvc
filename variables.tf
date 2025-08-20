@@ -64,3 +64,19 @@ variable "oauth_token_url" {
   type        = string
   default     = ""
 }
+
+# Hybrid auth variables for API Gateway module
+variable "aad_tenant_id" {
+  description = "Azure AD tenant ID used by APIM validate-jwt"
+  type        = string
+}
+
+variable "aad_audience" {
+  description = "Audience (api://<app-id-uri> or application ID) expected in JWTs"
+  type        = string
+}
+
+variable "ui_token_validate_url" {
+  description = "URL of uiapikms token validation endpoint (POST { token })"
+  type        = string
+}

@@ -51,6 +51,10 @@ module "api_gateway" {
   kv_id             = module.network.kv_id
   openai_account_id = module.ai_service.openai_account_id
   openai_endpoint   = module.ai_service.openai_endpoint
+  # Hybrid auth parameters
+  aad_tenant_id         = var.aad_tenant_id
+  aad_audience          = var.aad_audience
+  ui_token_validate_url = var.ui_token_validate_url
 }
 
 module "observability" {

@@ -2,3 +2,4 @@
 *.tfplan
 terraform.tfstate
 terraform.tfstate.backup
+.windsurf

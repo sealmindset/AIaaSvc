@@ -37,7 +37,11 @@ resource "azurerm_api_management_api_policy" "openai_policy" {
   api_name            = azurerm_api_management_api.openai_proxy.name
   api_management_name = azurerm_api_management.apim.name
   resource_group_name = var.rg_name
-  xml_content         = file("${path.module}/policies/openai.xml")
+  xml_content         = templatefile("${path.module}/policies/openai.xml", {
+    aad_tenant_id          = var.aad_tenant_id,
+    aad_audience           = var.aad_audience,
+    ui_token_validate_url  = var.ui_token_validate_url
+  })
 }
 
 # Subscription (token) for each internal application
